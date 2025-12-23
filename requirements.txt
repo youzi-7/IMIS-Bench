@@ -1,0 +1,18 @@
+# 仅在非 conda 环境下使用；如果你用 conda，请优先使用 environment.yml
+torch==2.3.1
+torchvision
+timm==0.9.16
+transformers==4.39.3
+huggingface-hub
+monai
+nibabel
+opencv-python==4.10.0
+scikit-image
+scikit-learn
+numpy
+scipy
+einops
+matplotlib
+pandas
+tqdm
+requests
