@@ -2,6 +2,7 @@ import timm
 from timm.layers import resample_abs_pos_embed_nhwc
 import torch
 import torch.nn as nn
+from .adapter import DynamicAdapter
 
 class LayerNorm2d(nn.Module):
     def __init__(self, num_channels: int, eps: float = 1e-6) -> None:
@@ -28,17 +29,34 @@ class ViT(nn.Module):
     depth: int = 12,
     pretrained: bool = True,
     freeze_encoder: bool = True,
+    use_adapter: bool = False,
+    adapter_bottleneck_dim: int = 64,
+    adapter_dropout: float = 0.0,
     ) -> None:
 
         super().__init__()
         self.encoder_embed_dim = encoder_embed_dim
         self.depth = depth
         self.pretrain_model = pretrain_model
+        self.use_adapter = use_adapter
         self.sam_encoder = timm.create_model(self.pretrain_model, pretrained=pretrained, num_classes=0)
         
         if freeze_encoder:
             for name, param in self.sam_encoder.named_parameters():
                 param.requires_grad = False
+
+        # Add dynamic adapters if enabled
+        if self.use_adapter:
+            self.adapters = nn.ModuleList([
+                DynamicAdapter(
+                    d_model=encoder_embed_dim,
+                    bottleneck_dim=adapter_bottleneck_dim,
+                    dropout=adapter_dropout
+                )
+                for _ in range(depth)
+            ])
+        else:
+            self.adapters = None
 
         self.neck = nn.Sequential(
             nn.Conv2d(self.encoder_embed_dim, out_chans, kernel_size=1, bias=False),
@@ -47,7 +65,7 @@ class ViT(nn.Module):
             LayerNorm2d(out_chans),
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, step: int = 0) -> torch.Tensor:
         x = self.sam_encoder.patch_embed(x)
         if self.sam_encoder.pos_embed is not None:
             x = x + resample_abs_pos_embed_nhwc(self.sam_encoder.pos_embed, x.shape[1:3])
@@ -57,6 +75,10 @@ class ViT(nn.Module):
 
         for i in range(self.depth):
             x = self.sam_encoder.blocks[i](x)
+            # Apply adapter after each transformer block if enabled
+            if self.use_adapter:
+                x = self.adapters[i](x, step=step)
+                
         x = self.neck(x.permute(0, 3, 1, 2))
 
         return x

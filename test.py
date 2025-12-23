@@ -44,6 +44,10 @@ parser.add_argument('--device', type=str, default='cuda')
 parser.add_argument('--mask_num', type=int, default=None)
 parser.add_argument('--prompt_mode', type=str, default='points')
 parser.add_argument('--inter_num', type=int, default=1)
+# adapter parameters  
+parser.add_argument('--use_adapter', action='store_true', default=False, help='Enable iteration-aware dynamic adapter')
+parser.add_argument('--adapter_bottleneck_dim', type=int, default=64, help='Adapter bottleneck dimension')
+parser.add_argument('--adapter_dropout', type=float, default=0.0, help='Adapter dropout rate')
 # train
 parser.add_argument('--gpu_ids', type=int, nargs='+', default=[0]) 
 parser.add_argument('--multi_gpu', action='store_true', default=False)
@@ -128,9 +132,16 @@ class BaseTester:
         masks = F.interpolate(pred_masks, ori_size, mode='bilinear')
         return masks
 
-    def interaction(self, model, image_embedding, low_masks, mask_preds, labels):
+    def interaction(self, model, image_embedding, low_masks, mask_preds, labels, images):
         with torch.no_grad():
             for inter in range(self.args.inter_num-1):
+                # Update step for adapter: inter + 1 because initial forward was at step 0
+                current_step = inter + 1
+                
+                # Re-compute image embedding with current step if using adapter
+                if hasattr(model.image_encoder, 'use_adapter') and model.image_encoder.use_adapter:
+                    image_embedding = model.image_forward(images, step=current_step)
+                
                 prompts = model.supervised_prompts(None, labels, mask_preds, low_masks, 'points')
                 outputs = model.forward_decoder(image_embedding, prompts)
                 mask_preds, low_masks = outputs['masks'], outputs['low_res_masks']
@@ -160,7 +171,7 @@ class BaseTester:
             image_root = batch_input["image_root"][0]
       
             text_prompt = model.process_text_prompt(target_list)
-            image_embedding = model.image_forward(images)
+            image_embedding = model.image_forward(images, step=0)
 
             test_prompts = {}
             image_level_metrics = {'loss':[],'iou':[],'dice':[],'category_pred':[]}
@@ -184,7 +195,7 @@ class BaseTester:
           
                 if self.args.inter_num > 1:
                     image_embedding = image_embedding.detach()
-                    loss, mask_preds = self.interaction(model, image_embedding, low_masks,  mask_preds, labels_cls)
+                    loss, mask_preds = self.interaction(model, image_embedding, low_masks,  mask_preds, labels_cls, images)
 
                 ori_preds = self.postprocessing_mask(mask_preds, ori_labels.shape[-2:])
 
