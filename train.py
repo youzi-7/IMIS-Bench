@@ -57,7 +57,7 @@ parser.add_argument('--port', type=int, default=12305)
 parser.add_argument('--gpu_ids', type=int, nargs='+', default=[0])
 parser.add_argument('--multi_gpu', action='store_true', default=False)
 parser.add_argument('--dist', dest='dist', type=bool, default=False, help='distributed training or not')
-parser.add_argument('-num_workers', type=int, default=1)
+parser.add_argument('-num_workers', type=int, default=10)
 
 args = parser.parse_args()
 os.environ["CUDA_VISIBLE_DEVICES"] = ','.join([str(i) for i in args.gpu_ids])
