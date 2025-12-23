@@ -42,6 +42,10 @@ parser.add_argument('--resume', action='store_true', default=True)
 parser.add_argument('--device', type=str, default='cuda')
 parser.add_argument('--mask_num', type=int, default=2)
 parser.add_argument('--inter_num', type=int, default=4)
+# adapter parameters
+parser.add_argument('--use_adapter', action='store_true', default=False, help='Enable iteration-aware dynamic adapter')
+parser.add_argument('--adapter_bottleneck_dim', type=int, default=64, help='Adapter bottleneck dimension')
+parser.add_argument('--adapter_dropout', type=float, default=0.0, help='Adapter dropout rate')
 # train
 parser.add_argument('--num_epochs', type=int, default=20)
 parser.add_argument('--lr_scheduler', type=str, default=None)
@@ -200,12 +204,20 @@ class BaseTrainer:
         pseudo_preds, 
         labels, 
         pseudos,
+        images,
                 ):
         
         total_loss = 0
         text_and_mask_inter = np.random.randint(0, self.args.inter_num-1)
         with amp.autocast():
             for inter in range(self.args.inter_num):
+                # Update step for adapter: inter + 1 because initial forward was at step 0
+                current_step = inter + 1
+                
+                # Re-compute image embedding with current step if using adapter
+                if hasattr(model.image_encoder, 'use_adapter') and model.image_encoder.use_adapter:
+                    image_embedding = model.image_forward(images, step=current_step)
+                
                 if inter == text_and_mask_inter or inter == self.args.inter_num-1:
                     gt_prompts = model.process_mask_prompt(gt_low_masks)
                     gt_prompts.update(self.text_prompt)
@@ -275,7 +287,7 @@ class BaseTrainer:
             self.text_prompt = model.process_text_prompt(self.target_list)
 
             self.img_shape = images.shape
-            image_embedding = model.image_forward(images)
+            image_embedding = model.image_forward(images, step=0)
    
             gt_prm = random.choices(['bboxes', 'points', 'text'], [0.4, 0.3, 0.3])[0]  #supervised specify prompt
             pse_prm = random.choices(['bboxes', 'points'], [0.5, 0.5])[0]
@@ -321,7 +333,7 @@ class BaseTrainer:
 
             loss, gt_preds, pseudo_preds = self.interaction(model, image_embedding, gt_low_masks, pseudo_low_masks,
                                                             gt_preds, pseudo_preds, 
-                                                            labels, pseudos
+                                                            labels, pseudos, images
                                                             )
 
             gt_iou, gt_dice = self.get_iou_and_dice(gt_preds, labels)

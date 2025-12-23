@@ -12,7 +12,10 @@ def build_sam_vit_h(args):
         encoder_global_attn_indexes=[7, 15, 23, 31],
         image_size=args.image_size,
         checkpoint=args.sam_checkpoint,
-        pretrain_model = 'samvit_huge_patch16'
+        pretrain_model = 'samvit_huge_patch16',
+        use_adapter=getattr(args, 'use_adapter', False),
+        adapter_bottleneck_dim=getattr(args, 'adapter_bottleneck_dim', 64),
+        adapter_dropout=getattr(args, 'adapter_dropout', 0.0),
     )
 
 
@@ -27,7 +30,10 @@ def build_sam_vit_l(args):
         encoder_global_attn_indexes=[5, 11, 17, 23],
         image_size=args.image_size,
         checkpoint=args.sam_checkpoint,
-        pretrain_model = 'samvit_large_patch16'
+        pretrain_model = 'samvit_large_patch16',
+        use_adapter=getattr(args, 'use_adapter', False),
+        adapter_bottleneck_dim=getattr(args, 'adapter_bottleneck_dim', 64),
+        adapter_dropout=getattr(args, 'adapter_dropout', 0.0),
     )
 
 
@@ -39,8 +45,10 @@ def build_sam_vit_b(args):
         encoder_global_attn_indexes=[2, 5, 8, 11],
         image_size=args.image_size,
         checkpoint=args.sam_checkpoint,
-        pretrain_model = 'samvit_base_patch16'
-    
+        pretrain_model = 'samvit_base_patch16',
+        use_adapter=getattr(args, 'use_adapter', False),
+        adapter_bottleneck_dim=getattr(args, 'adapter_bottleneck_dim', 64),
+        adapter_dropout=getattr(args, 'adapter_dropout', 0.0),
     )
 
 
@@ -59,7 +67,10 @@ def _build_sam(
     encoder_global_attn_indexes,
     image_size,
     checkpoint,
-    pretrain_model
+    pretrain_model,
+    use_adapter=False,
+    adapter_bottleneck_dim=64,
+    adapter_dropout=0.0
 ):
     prompt_embed_dim = 768
     image_size = image_size
@@ -73,6 +84,9 @@ def _build_sam(
             depth = encoder_depth,
             freeze_encoder = True,
             pretrained=False,
+            use_adapter=use_adapter,
+            adapter_bottleneck_dim=adapter_bottleneck_dim,
+            adapter_dropout=adapter_dropout,
             ),
 
         prompt_encoder=PromptEncoder(
@@ -101,7 +115,7 @@ def _build_sam(
     
     if checkpoint is not None:
         state_dict = torch.load(open(checkpoint, "rb"), map_location="cuda")
-        sam.load_state_dict(state_dict)
+        sam.load_state_dict(state_dict, strict=False)
         print('******Loaded IMISNet parameters')
 
     return sam

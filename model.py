@@ -43,9 +43,9 @@ class IMISNet(nn.Module):
         if category_weights is not None:
             self.load_category_weights(category_weights)
     
-    def image_forward(self, image):
+    def image_forward(self, image, step=0):
         img_shape = image.shape
-        image_embedding = self.image_encoder(image)
+        image_embedding = self.image_encoder(image, step=step)
         assert len(image_embedding.shape) == 4, f'required shape is (B, C, H, W), but we get {image_embedding.shape}'
 
         if self.test_mode:
@@ -96,10 +96,10 @@ class IMISNet(nn.Module):
         }
         return outputs
 
-    def forward(self, image, prompt):
+    def forward(self, image, prompt, step=0):
         img_shape = image.shape
-        image_embedding = self.image_forward(image, self.test_mode)
-        return self.forward_decoder(image_embedding, img_shape, prompt)
+        image_embedding = self.image_forward(image, step=step)
+        return self.forward_decoder(image_embedding, prompt)
 
     def supervised_prompts(self, classes, labels, pred_masks, low_res_masks, specify_prompt):
         bs_prompts = {}
